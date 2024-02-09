@@ -271,3 +271,4 @@ end
 expected = total/n
 print(expected)
 ```
+# And with the new damage depth curve, we do get a higher expected damage, which makes sense as a one story home is likely much more vulerable to flooding an a hotel. The new expected damage, however, isn't that much higher. This is likely due to the probability distribution of the flood depths combined with the elevation of the hotel resulting in there almost never being a signifcant flood event in this analysis. In the future, it would be better to more accurately find the elevation of the structure or create a depth distribution that goes up to those elevation.
