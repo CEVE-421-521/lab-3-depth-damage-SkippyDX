@@ -1,13 +1,18 @@
 ---
 title: "Lab 3: Depth-Damage Models"
 subtitle: "DataFrames and Distributions"
-author: "Your Name"
+author: "Kyle Olcott kto1"
 date: 2024-01-26
 week: 3
 categories: [Lab]
 
 # code to use
 jupyter: julia-1.10
+
+# execution options
+execution:
+    cache: true
+    freeze: true
 
 format: 
     html:
@@ -56,10 +61,213 @@ using Unitful
 Plots.default(; margin=6Plots.mm)
 ```
 
-# Site information
+# Site information 
+# Galveston Peir 21, TX
+# Harbor House Hotel & Marina at Pier 21
+# The hotel is approximately 150 ft away from the gauge
+# Elevation: 10.07 ft (3.07 m)
 
 # Depth-Damage
 
+# The way that depth damage curves are differentiated are by assigning one for each building type in a specific region. The damage depth curve that will be used is the 155th one of the csv file of Galveston - USACE hotel, structure. Although there is a seperate curve for the hotel's equipment, this curve matches with the location and type of building that is being analyzed. 
+
+```{julia}
+
+haz_fl_dept = CSV.read("data/haz_fl_dept.csv", DataFrame)
+first(haz_fl_dept, 3)
+
+```
+
+```{julia}
+
+include("depthdamage.jl")
+
+```
+
+```{julia}
+
+demo_row = @rsubset(
+    haz_fl_dept, :Description == "Hotel, structure"
+)[
+    2, :,
+]
+dd = DepthDamageData(demo_row)
+
+```
+
+```{julia}
+scatter(
+    dd.depths,
+    dd.damages;
+    xlabel="Flood Depth at House",
+    ylabel="Damage (%)",
+    label="$(dd.description) ($(dd.source))",
+    legend=:bottomright,
+    size=(700, 500),
+)
+```
+
+```{julia}
+function get_depth_damage_function(
+    depth_train::Vector{<:T}, dmg_train::Vector{<:AbstractFloat}
+) where {T<:Unitful.Length}
+
+    # interpolate
+    depth_ft = ustrip.(u"ft", depth_train)
+    interp_fn = Interpolations.LinearInterpolation(
+        depth_ft,
+        dmg_train;
+        extrapolation_bc=Interpolations.Flat(),
+    )
+
+    damage_fn = function (depth::T2) where {T2<:Unitful.Length}
+        return interp_fn(ustrip.(u"ft", depth))
+    end
+    return damage_fn
+end
+```
+
+```{julia}
+damage_fn = get_depth_damage_function(dd.depths, dd.damages)
+```
+
+```{julia}
+p = let
+    depths = uconvert.(u"ft", (-10.0u"ft"):(1.0u"inch"):(30.0u"ft"))
+    damages = damage_fn.(depths)
+    scatter(
+        depths,
+        damages;
+        xlabel="Flood Depth",
+        ylabel="Damage (%)",
+        label="$(dd.description) ($(dd.source))",
+        legend=:bottomright,
+        size=(800, 400),
+        linewidth=2,
+    )
+end
+p
+```
+
+# This depth damage curve is used to estimate the damage suffered by a structure given a flood depth as a percentage of the structure's total value. It should be noted, however, that this damage depth curve is specific for a hotel in Gavleston, and using it for a different type of building or in a different region may result in a poor damage analysis.
+
 # Expected annual damages
 
+```{julia}
+gauge_dist = GeneralizedExtremeValue(5, 1.5, 0.1)
+
+p1 = plot(
+    gauge_dist;
+    label="Gauge Distribution",
+    xlabel="Water Level (ft)",
+    ylabel="Probability Density",
+    legend=:topright,
+    linewidth=2,
+)
+
+offset = 10.07 # house is 10.07 feet above gauge
+house_dist = GeneralizedExtremeValue(gauge_dist.μ - offset, gauge_dist.σ, gauge_dist.ξ)
+
+plot!(p1, house_dist; label="Hotel Distribution", linewidth=2)
+```
 # Discussion
+
+```{julia}
+n = 0 
+total = 0
+while n < 1000000
+
+n = n+1
+depth = rand(house_dist, 1) * 1u"ft"
+damage = damage_fn.(depth)
+total = damage.+total
+
+end    
+
+expected = total/n
+print(expected)
+```
+
+# The above value is the expected (average) damage that the hotel will suffer as a percentage of it's total value. Given that the value usually goes to 0.117%, the hotel has a very low vulnerability to flooding.
+
+# With that being said, given how close the structure is to the coast, this low value may not be accurate, and could stem from the high elevation given by the elevation website, or that the depth damage curve for hotels look more like a exponential function rather than a monotnic one, which lowers the percent damage at lower flood depths. For further analysis, we will see what happens to the expected damage if a much worse depth damage curve is applied to the structure, such as a one story home in Gavleston.
+
+```{julia}
+
+demo_row = @rsubset(
+    haz_fl_dept, :Description == "one story, no basement, Structure"
+)[
+    3, :,
+]
+dd = DepthDamageData(demo_row)
+
+```
+```{julia}
+scatter(
+    dd.depths,
+    dd.damages;
+    xlabel="Flood Depth at House",
+    ylabel="Damage (%)",
+    label="$(dd.description) ($(dd.source))",
+    legend=:bottomright,
+    size=(700, 500),
+)
+```
+
+```{julia}
+function get_depth_damage_function(
+    depth_train::Vector{<:T}, dmg_train::Vector{<:AbstractFloat}
+) where {T<:Unitful.Length}
+
+    # interpolate
+    depth_ft = ustrip.(u"ft", depth_train)
+    interp_fn = Interpolations.LinearInterpolation(
+        depth_ft,
+        dmg_train;
+        extrapolation_bc=Interpolations.Flat(),
+    )
+
+    damage_fn = function (depth::T2) where {T2<:Unitful.Length}
+        return interp_fn(ustrip.(u"ft", depth))
+    end
+    return damage_fn
+end
+```
+
+```{julia}
+damage_fn = get_depth_damage_function(dd.depths, dd.damages)
+```
+
+```{julia}
+p = let
+    depths = uconvert.(u"ft", (-10.0u"ft"):(1.0u"inch"):(30.0u"ft"))
+    damages = damage_fn.(depths)
+    scatter(
+        depths,
+        damages;
+        xlabel="Flood Depth",
+        ylabel="Damage (%)",
+        label="$(dd.description) ($(dd.source))",
+        legend=:bottomright,
+        size=(800, 400),
+        linewidth=2,
+    )
+end
+p
+```
+
+```{julia}
+n = 0 
+total = 0
+while n < 1000000
+
+n = n+1
+depth = rand(house_dist, 1) * 1u"ft"
+damage = damage_fn.(depth)
+total = damage.+total
+
+end    
+
+expected = total/n
+print(expected)
+```
